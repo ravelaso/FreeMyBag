@@ -14,10 +14,12 @@ local DEFAULT_SAVED = {
     screenBorderEnabled = true,
     bagBorderEnabled    = true,
     pulseEnabled        = true,
+    exclusionList       = {},
 }
 
 addon.db         = {}
 addon.deleteMode = false
+addon.addExclusionMode = false
 
 -- ============================================================
 -- ---- Alt key tracking + pending actions ----
@@ -46,6 +48,11 @@ autoFrame:SetScript("OnUpdate", function()
     -- Pending action from the confirm case (Rare+ with autoDelete OFF)
     -- Item was picked up by Blizzard's OnClick; put back and show dialog.
     if pendingAction then
+        -- Cancel pending action if exclusion add mode is active
+        if FreeMyBag.addExclusionMode then
+            pendingAction = false
+            return
+        end
         local pa = pendingAction
         pendingAction = false
         PickupContainerItem(pa.bag, pa.slot)
@@ -82,6 +89,16 @@ autoFrame:SetScript("OnUpdate", function()
 end)
 
 -- ============================================================
+-- ---- Item type ID helper (must be before OnMouseDown hook) ----
+-- ============================================================
+
+-- Get item type ID from an item link (e.g. "69435" from "|Hitem:69435:...")
+local function GetItemTypeID(itemLink)
+    if not itemLink then return nil end
+    return tonumber(string.match(itemLink, ":(%d+):"))
+end
+
+-- ============================================================
 -- ---- OnMouseDown hook (Alt+LeftClick in delete mode) ----
 -- ============================================================
 -- OnMouseDown fires BEFORE the secure system processes the click,
@@ -97,6 +114,42 @@ end)
 --                            slot has item (confirm) → picks up again → OnUpdate puts back
 
 local function OnContainerItemMouseDown(self, buttonName)
+    -- Exclusion add mode: Alt+LeftClick adds item type to exclusion list
+    -- Does NOT exit add mode — stays active for multiple items
+    if FreeMyBag.addExclusionMode and buttonName == "LeftButton" and altDown then
+        local parent   = self:GetParent()
+        local frameNum = tonumber(parent:GetName():match("%d+"))
+        if frameNum then
+            local bag  = frameNum - 1
+            local slot = self:GetID()
+            local itemLink = GetContainerItemLink(bag, slot)
+            if itemLink then
+                local typeID = GetItemTypeID(itemLink)
+                if typeID then
+                    addon.db.exclusionList[typeID] = true
+                end
+            end
+        end
+        return
+    end
+
+    -- Exclusion guard: skip items whose type is in the exclusion list
+    if FreeMyBag.deleteMode then
+        local parent   = self:GetParent()
+        local frameNum = tonumber(parent:GetName():match("%d+"))
+        if frameNum then
+            local bag  = frameNum - 1
+            local slot = self:GetID()
+            local itemLink = GetContainerItemLink(bag, slot)
+            if itemLink then
+                local typeID = GetItemTypeID(itemLink)
+                if typeID and addon.db.exclusionList[typeID] then
+                    return  -- protected item, skip delete logic
+                end
+            end
+        end
+    end
+
     if not FreeMyBag.deleteMode then return end
     if buttonName ~= "LeftButton" then return end
     if not altDown then return end
@@ -157,6 +210,33 @@ function addon:ToggleDeleteMode()
     else
         if CursorHasItem() then ClearCursor() end
         FreeMyBagUI:OnDeleteModeDeactivated()
+    end
+end
+
+-- ============================================================
+-- ---- Exclusion List ----
+-- ============================================================
+
+function addon:ToggleExclusionAddMode()
+    if self.addExclusionMode then
+        self:ExitExclusionAddMode()
+    else
+        if self.deleteMode then
+            self:ToggleDeleteMode()
+        end
+        self.addExclusionMode = true
+        addon:Print("|cff40c040Add Exclusion Mode ON|r — Alt+LeftClick items to protect them. /fmb to cancel.")
+        if FreeMyBagUI then
+            FreeMyBagUI:OnExclusionAddModeActivated()
+        end
+    end
+end
+
+function addon:ExitExclusionAddMode()
+    self.addExclusionMode = false
+    if CursorHasItem() then ClearCursor() end
+    if FreeMyBagUI then
+        FreeMyBagUI:OnExclusionAddModeDeactivated()
     end
 end
 

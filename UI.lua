@@ -342,6 +342,69 @@ function FreeMyBagUI:RefreshDeleteModeToggle()
 end
 
 -- ============================================================
+-- ---- Exclusion Add Mode callbacks + green border ----
+-- ============================================================
+
+local addModeBorderFrame
+local addModeBorderTextures = {}
+
+local function CreateAddModeBorderFrame()
+    if addModeBorderFrame then return end
+    addModeBorderFrame = CreateFrame("Frame", "FreeMyBagAddModeBorder", UIParent)
+    addModeBorderFrame:SetAllPoints(UIParent)
+    addModeBorderFrame:SetFrameStrata("FULLSCREEN")
+    addModeBorderFrame:SetFrameLevel(199)
+    addModeBorderFrame:Hide()
+
+    local THICKNESS = 6
+    local function edge(pt1, pt2, isH)
+        local t = addModeBorderFrame:CreateTexture(nil, "OVERLAY")
+        t:SetTexture(WHITE_TEX)
+        t:SetPoint(pt1, addModeBorderFrame, pt1, 0, 0)
+        t:SetPoint(pt2, addModeBorderFrame, pt2, 0, 0)
+        if isH then t:SetHeight(THICKNESS) else t:SetWidth(THICKNESS) end
+        table.insert(addModeBorderTextures, t)
+    end
+    edge("TOPLEFT",    "TOPRIGHT",    true)
+    edge("BOTTOMLEFT", "BOTTOMRIGHT", true)
+    edge("TOPLEFT",    "BOTTOMLEFT",  false)
+    edge("TOPRIGHT",   "BOTTOMRIGHT", false)
+end
+
+function FreeMyBagUI:SetAddModeBorderActive(on)
+    CreateAddModeBorderFrame()
+    if on then
+        for _, t in ipairs(addModeBorderTextures) do
+            t:SetVertexColor(0, 0.75, 0, 0.85)
+        end
+        addModeBorderFrame:Show()
+    else
+        addModeBorderFrame:Hide()
+    end
+end
+
+function FreeMyBagUI:OnExclusionAddModeActivated()
+    FreeMyBagUI:SetAddModeBorderActive(true)
+    if configFrame then
+        if configFrame._exHint then
+            configFrame._exHint:Show()
+        end
+        if configFrame._exCancelBtn then
+            configFrame._exCancelBtn:Show()
+        end
+    end
+end
+
+function FreeMyBagUI:OnExclusionAddModeDeactivated()
+    FreeMyBagUI:SetAddModeBorderActive(false)
+    if configFrame then
+        if configFrame._exHint then configFrame._exHint:Hide() end
+        if configFrame._exCancelBtn then configFrame._exCancelBtn:Hide() end
+    end
+    FreeMyBagUI:RefreshExclusionList()
+end
+
+-- ============================================================
 -- ---- Config window ----
 -- ============================================================
 
@@ -350,7 +413,7 @@ local configFrame
 function FreeMyBagUI:CreateConfigWindow()
     if configFrame then return end
 
-    local W, H = 290, 300
+    local W, H = 520, 400  -- two-column layout: options (left) + protected list (right)
 
     configFrame = CreateFrame("Frame", "FreeMyBagConfigFrame", UIParent)
     configFrame:SetSize(W, H)
@@ -400,51 +463,57 @@ function FreeMyBagUI:CreateConfigWindow()
     closeBtn:SetScript("OnLeave", function() closeBg:SetVertexColor(0.35, 0.10, 0.10, 0.85) end)
     closeBtn:SetScript("OnClick", function() configFrame:Hide() end)
 
-    local PAD   = 8
-    local INNER = W - PAD * 2
-    local y     = -28
+    local PAD       = 8
+    local COL_W     = 195  -- column width for left options
+    local INNER_L   = COL_W - PAD * 2  -- inner width for left column
+    local colLeftX  = PAD  -- left column starts here
+    local colRightX = PAD + COL_W + 12  -- right column starts after left + gap
+    local y         = -28
+
+    -- === LEFT COLUMN: OPTIONS ===
+    local yLeft = y
 
     -- ---- Section: Delete Mode ----
     local dmLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dmLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", PAD, y)
+    dmLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colLeftX, yLeft)
     dmLabel:SetText("Delete Mode")
     dmLabel:SetTextColor(0.75, 0.75, 0.75)
-    y = y - 26
+    yLeft = yLeft - 26
 
     local dmToggle = MakeToggle(
         configFrame, false,
         "Delete Mode: |cffff4444ON|r",
         "Delete Mode: |cff888888OFF|r",
-        INNER, 22, y, PAD,
+        INNER_L, 22, yLeft, colLeftX,
         function() FreeMyBag:ToggleDeleteMode() end
     )
     configFrame.dmToggle = dmToggle
-    y = y - 28
+    yLeft = yLeft - 28
 
-    MakeSep(configFrame, y, PAD) ; y = y - 10
+    MakeSep(configFrame, yLeft, colLeftX) ; yLeft = yLeft - 10
 
     -- ---- Section: Auto-Delete ----
     local adLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    adLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", PAD, y)
+    adLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colLeftX, yLeft)
     adLabel:SetText("Auto-Delete")
     adLabel:SetTextColor(0.75, 0.75, 0.75)
-    y = y - 22
+    yLeft = yLeft - 22
 
     local adDesc = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    adDesc:SetPoint("TOPLEFT",  configFrame, "TOPLEFT",  PAD,  y)
-    adDesc:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -PAD, y)
-    adDesc:SetWidth(W - PAD * 2)
+    adDesc:SetPoint("TOPLEFT",  configFrame, "TOPLEFT",  colLeftX, yLeft)
+    adDesc:SetPoint("TOPRIGHT", configFrame, "TOPLEFT",  colLeftX + INNER_L, yLeft)
+    adDesc:SetWidth(INNER_L)
     adDesc:SetWordWrap(true)
     adDesc:SetNonSpaceWrap(true)
     adDesc:SetText("Auto-confirms Rare+ popups (the ones that require typing DELETE).")
     adDesc:SetTextColor(0.50, 0.50, 0.50)
-    y = y - 22
+    yLeft = yLeft - 22
 
     local adToggle = MakeToggle(
         configFrame, false,
         "Auto-Delete: |cff40c040ON|r",
         "Auto-Delete: |cff888888OFF|r",
-        INNER, 22, y, PAD,
+        INNER_L, 22, yLeft, colLeftX,
         function(btn)
             FreeMyBag.db.autoDelete = not FreeMyBag.db.autoDelete
             FreeMyBag_SavedVars = FreeMyBag.db
@@ -452,40 +521,39 @@ function FreeMyBagUI:CreateConfigWindow()
         end
     )
     configFrame.adToggle = adToggle
-    y = y - 28
+    yLeft = yLeft - 28
 
-    MakeSep(configFrame, y, PAD) ; y = y - 10
+    MakeSep(configFrame, yLeft, colLeftX) ; yLeft = yLeft - 10
 
     -- ---- Section: Visual Feedback ----
     local vfLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    vfLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", PAD, y)
+    vfLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colLeftX, yLeft)
     vfLabel:SetText("Visual Feedback")
     vfLabel:SetTextColor(0.75, 0.75, 0.75)
-    y = y - 26
+    yLeft = yLeft - 26
 
     -- Screen border toggle
     local sbToggle = MakeToggle(
         configFrame, true,
         "Screen Border: |cff40c040ON|r",
         "Screen Border: |cff888888OFF|r",
-        INNER, 22, y, PAD,
+        INNER_L, 22, yLeft, colLeftX,
         function(btn)
             FreeMyBag.db.screenBorderEnabled = not FreeMyBag.db.screenBorderEnabled
             FreeMyBag_SavedVars = FreeMyBag.db
             btn:SetState(FreeMyBag.db.screenBorderEnabled)
-            -- Apply immediately if delete mode is on
             FreeMyBagUI:SetScreenBorderActive(FreeMyBag.deleteMode)
         end
     )
     configFrame.sbToggle = sbToggle
-    y = y - 26
+    yLeft = yLeft - 26
 
     -- Bag border toggle
     local bbToggle = MakeToggle(
         configFrame, true,
         "Bag Border: |cff40c040ON|r",
         "Bag Border: |cff888888OFF|r",
-        INNER, 22, y, PAD,
+        INNER_L, 22, yLeft, colLeftX,
         function(btn)
             FreeMyBag.db.bagBorderEnabled = not FreeMyBag.db.bagBorderEnabled
             FreeMyBag_SavedVars = FreeMyBag.db
@@ -494,23 +562,267 @@ function FreeMyBagUI:CreateConfigWindow()
         end
     )
     configFrame.bbToggle = bbToggle
-    y = y - 26
+    yLeft = yLeft - 26
 
     -- Button pulse toggle
     local bpToggle = MakeToggle(
         configFrame, true,
         "Button Pulse: |cff40c040ON|r",
         "Button Pulse: |cff888888OFF|r",
-        INNER, 22, y, PAD,
+        INNER_L, 22, yLeft, colLeftX,
         function(btn)
             FreeMyBag.db.pulseEnabled = not FreeMyBag.db.pulseEnabled
             FreeMyBag_SavedVars = FreeMyBag.db
             btn:SetState(FreeMyBag.db.pulseEnabled)
-            -- Re-sync pulse state immediately
             FreeMyBagUI:RefreshDeleteButton()
         end
     )
     configFrame.bpToggle = bpToggle
+    yLeft = yLeft - 10
+
+    MakeSep(configFrame, yLeft, colLeftX) ; yLeft = yLeft - 20
+
+    -- === RIGHT COLUMN: PROTECTED ITEMS LIST ===
+    local yRight = y  -- Start from top
+
+    -- Header
+    local exLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    exLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colRightX, yRight)
+    exLabel:SetText("Protected Items")
+    exLabel:SetTextColor(0.75, 0.75, 0.75)
+    yRight = yRight - 24
+
+    -- Add Item button (use Frame, not Button — CreateTexture works on Frame in WotLK 3.3.5)
+    local addExBtn = CreateFrame("Button", nil, configFrame)
+    addExBtn:SetSize(80, 20)
+    addExBtn:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colRightX, yRight)
+    local addExBg = addExBtn:CreateTexture(nil, "BACKGROUND")
+    addExBg:SetAllPoints()
+    addExBg:SetVertexColor(0.10, 0.30, 0.10, 0.85)
+    local addExLbl = addExBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    addExLbl:SetPoint("CENTER", addExBtn, "CENTER", 0, 0)
+    addExLbl:SetText("Add Item")
+    addExLbl:SetTextColor(0.75, 0.85, 0.75)
+    addExBtn:SetScript("OnEnter", function() addExBg:SetVertexColor(0.15, 0.40, 0.15, 0.9) end)
+    addExBtn:SetScript("OnLeave", function() addExBg:SetVertexColor(0.10, 0.30, 0.10, 0.85) end)
+    addExBtn:SetScript("OnClick", function()
+        FreeMyBag:ToggleExclusionAddMode()
+    end)
+    ApplyBorder(addExBtn, 0.15, 0.45, 0.15, 0.5)
+    configFrame._exAddBtn = addExBtn
+    yRight = yRight - 24
+
+    -- Hint text (visible only in add mode)
+    local exHint = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    exHint:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colRightX, yRight)
+    exHint:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -PAD, yRight)
+    exHint:SetText("Click an item in your bags to protect it")
+    exHint:SetTextColor(0.50, 0.75, 0.50)
+    exHint:Hide()
+    configFrame._exHint = exHint
+    yRight = yRight - 18
+
+    -- Cancel button (visible only in add mode, use Frame:CreateTexture instead of ColorTex on Button)
+    local exCancelBtn = CreateFrame("Button", nil, configFrame)
+    exCancelBtn:SetSize(70, 20)
+    exCancelBtn:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colRightX, yRight)
+    local exCancelBg = exCancelBtn:CreateTexture(nil, "BACKGROUND")
+    exCancelBg:SetAllPoints()
+    exCancelBg:SetVertexColor(0.35, 0.10, 0.10, 0.85)
+    local exCancelLbl = exCancelBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    exCancelLbl:SetPoint("CENTER", exCancelBtn, "CENTER", 0, 0)
+    exCancelLbl:SetText("Cancel")
+    exCancelLbl:SetTextColor(0.80, 0.80, 0.80)
+    exCancelBtn:SetScript("OnEnter", function() exCancelBg:SetVertexColor(0.50, 0.15, 0.15, 0.9) end)
+    exCancelBtn:SetScript("OnLeave", function() exCancelBg:SetVertexColor(0.35, 0.10, 0.10, 0.85) end)
+    exCancelBtn:SetScript("OnClick", function()
+        FreeMyBag:ExitExclusionAddMode()
+    end)
+    exCancelBtn:Hide()
+    configFrame._exCancelBtn = exCancelBtn
+    yRight = yRight - 24
+
+    -- ---- Scrollable list with proper ScrollFrame + Slider (WoW 3.3.5) ----
+    local listH = 240  -- Taller list for right column
+    local sliderW = 16
+    local INNER_R = W - colRightX - PAD - sliderW - 4  -- right column inner width
+
+    local scrollFrame = CreateFrame("ScrollFrame", "FreeMyBagExclusionScrollFrame", configFrame)
+    scrollFrame:SetSize(INNER_R, listH)
+    scrollFrame:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colRightX, yRight)
+    scrollFrame:EnableMouse(true)
+
+    -- Scroll child — all item rows go here, clipped by ScrollFrame
+    -- IMPORTANT: Must have absolute width and height (both SetWidth AND SetHeight)
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetWidth(INNER_R - 4)
+    scrollChild:SetHeight(1)  -- Will grow dynamically based on content
+    scrollFrame:SetScrollChild(scrollChild)
+
+    -- Background behind scroll area
+    local scrollBg = ColorTex(scrollFrame, "BACKGROUND", 0.08, 0.08, 0.08, 0.80)
+    scrollBg:SetAllPoints(scrollFrame)
+    ApplyBorder(scrollFrame, 0.22, 0.22, 0.22, 0.5)
+
+    -- Slider (ScrollBar) - standard WoW 3.3.5 pattern
+    local slider = CreateFrame("Slider", "FreeMyBagExclusionSlider", scrollFrame)
+    slider:SetOrientation("VERTICAL")
+    slider:SetSize(sliderW, listH)
+    slider:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 2, 0)
+    slider:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", 2, 0)
+
+    -- Slider track (background)
+    local sliderBg = ColorTex(slider, "BACKGROUND", 0.12, 0.12, 0.12, 0.85)
+    sliderBg:SetAllPoints(slider)
+    ApplyBorder(slider, 0.22, 0.22, 0.22, 0.4)
+
+    -- Slider thumb (the draggable part)
+    local thumb = slider:CreateTexture(nil, "BACKGROUND")
+    thumb:SetTexture(WHITE_TEX)
+    thumb:SetVertexColor(0.40, 0.40, 0.40, 0.85)
+    thumb:SetPoint("TOPLEFT", slider, "TOPLEFT", 2, 0)
+    thumb:SetPoint("BOTTOMRIGHT", slider, "BOTTOMRIGHT", -2, 0)
+
+    -- Configure slider range
+    slider:SetMinMaxValues(0, 0)
+    slider:SetValue(0)
+
+    -- OnValueChanged updates the scroll position
+    slider:SetScript("OnValueChanged", function(self, value)
+        scrollFrame:SetVerticalScroll(value)
+    end)
+
+    -- Update slider visibility based on whether content overflows
+    scrollFrame:SetScript("OnScrollRangeChanged", function(self, xOffset, yOffset)
+        local maxScroll = math.max(0, yOffset)
+        slider:SetMinMaxValues(0, maxScroll)
+        -- Show/hide slider based on content height
+        if maxScroll > 0 then
+            slider:Show()
+        else
+            slider:Hide()
+        end
+    end)
+
+    -- Enable mouse wheel scrolling
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local current = slider:GetValue()
+        local minval, maxval = slider:GetMinMaxValues()
+        local newval = current - delta * 10  -- Scroll 10 pixels at a time
+        if newval < minval then newval = minval end
+        if newval > maxval then newval = maxval end
+        slider:SetValue(newval)
+    end)
+
+    configFrame._exListFrame = scrollFrame
+    configFrame._exListContent = scrollChild
+    configFrame._exListSlider = slider
+end
+
+-- Helper: get exclusion list from db
+local function GetExclusionList()
+    return FreeMyBag.db.exclusionList or {}
+end
+
+-- Refresh the exclusion list display
+function FreeMyBagUI:RefreshExclusionList()
+    if not configFrame then return end
+
+    local scrollFrame = configFrame._exListFrame
+    local content = configFrame._exListContent
+    if not scrollFrame or not content then return end
+
+    -- Clear existing rows
+    for _, child in ipairs({content:GetChildren()}) do
+        child:Hide()
+    end
+
+    local list = GetExclusionList()
+    local count = 0
+    for _ in pairs(list) do count = count + 1 end
+
+    if count == 0 then
+        if not configFrame._exEmpty then
+            local empty = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            empty:SetPoint("CENTER", scrollFrame, "CENTER", 0, 0)
+            empty:SetText("No items protected")
+            empty:SetTextColor(0.40, 0.40, 0.40)
+            configFrame._exEmpty = empty
+        end
+        configFrame._exEmpty:Show()
+        content:SetHeight(1)
+        -- Reset scroll when empty
+        local slider = configFrame._exListSlider
+        if slider then
+            slider:SetValue(0)
+        end
+        return
+    end
+
+    if configFrame._exEmpty then
+        configFrame._exEmpty:Hide()
+    end
+
+    local rowH = 18
+    local iconSize = 14
+    local rowY = -2
+
+    for typeID in pairs(list) do
+        local name, _, quality = GetItemInfo(typeID)
+        local icon = GetItemIcon(typeID)
+
+        local row = CreateFrame("Frame", nil, content)
+        row:SetSize(content:GetWidth(), rowH - 2)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", 2, rowY)
+
+        local iconTex = row:CreateTexture(nil, "ARTWORK")
+        iconTex:SetSize(iconSize, iconSize)
+        iconTex:SetPoint("LEFT", row, "LEFT", 0, 0)
+        iconTex:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+
+        local nameStr = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        nameStr:SetPoint("LEFT", iconTex, "RIGHT", 4, 0)
+        nameStr:SetPoint("RIGHT", row, "RIGHT", -30, 0)
+        nameStr:SetJustifyH("LEFT")
+        nameStr:SetText(name or ("Item " .. typeID))
+        if quality then
+            local r, g, b = GetItemQualityColor(quality)
+            nameStr:SetTextColor(r, g, b)
+        else
+            nameStr:SetTextColor(0.75, 0.75, 0.75)
+        end
+
+        local remBtn = CreateFrame("Button", nil, row)
+        remBtn:SetSize(24, 14)
+        remBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        local remBg = remBtn:CreateTexture(nil, "BACKGROUND")
+        remBg:SetAllPoints()
+        remBg:SetVertexColor(0.35, 0.10, 0.10, 0.80)
+        local remLbl = remBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        remLbl:SetPoint("CENTER", remBtn, "CENTER", 0, 0)
+        remLbl:SetText("x")
+        remLbl:SetTextColor(0.80, 0.80, 0.80)
+        remBtn:SetScript("OnEnter", function() remBg:SetVertexColor(0.55, 0.15, 0.15, 0.9) end)
+        remBtn:SetScript("OnLeave", function() remBg:SetVertexColor(0.35, 0.10, 0.10, 0.80) end)
+        remBtn:SetScript("OnClick", function()
+            FreeMyBag.db.exclusionList[typeID] = nil
+            FreeMyBag_SavedVars = FreeMyBag.db
+            FreeMyBagUI:RefreshExclusionList()
+        end)
+
+        rowY = rowY - rowH
+    end
+
+    -- Set content height and update scroll frame
+    content:SetHeight(math.abs(rowY) + 4)
+    scrollFrame:UpdateScrollChildRect()
+
+    -- Reset scroll position to top
+    local slider = configFrame._exListSlider
+    if slider then
+        slider:SetValue(0)
+    end
 end
 
 function FreeMyBagUI:OpenConfig()
@@ -522,6 +834,8 @@ function FreeMyBagUI:OpenConfig()
     configFrame.sbToggle:SetState(db.screenBorderEnabled)
     configFrame.bbToggle:SetState(db.bagBorderEnabled)
     configFrame.bpToggle:SetState(db.pulseEnabled)
+
+    FreeMyBagUI:RefreshExclusionList()
 
     configFrame:Show()
     configFrame:Raise()
