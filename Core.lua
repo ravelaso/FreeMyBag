@@ -12,7 +12,7 @@ FreeMyBag = addon
 -- ============================================================
 
 local DEFAULT_SAVED = {
-    autoAccept          = true,   -- auto-confirm the Blizzard delete confirmation popup
+    autoAccept          = false,  -- auto-confirm the Blizzard delete confirmation popup
     screenBorderEnabled = true,   -- pulsing red border around the screen while delete mode is on
     bagBorderEnabled    = true,   -- red outline on ContainerFrame1 while delete mode is on
     pulseEnabled        = true,   -- button alpha pulse while delete mode is on
@@ -62,24 +62,36 @@ end)
 -- ---- Delete Mode hook ----
 -- ============================================================
 
+-- Store original function before hooking
+local original_UseContainerItem = UseContainerItem
+
+-- Override UseContainerItem to intercept RightClick equip/use behavior.
+-- When in delete mode, we delete instead of equip.
+-- This solves "Another action in progress" because we intercept BEFORE
+-- Blizzard tries to equip, not after like ContainerFrameItemButton_OnClick hook.
+UseContainerItem = function(bag, slot)
+    if FreeMyBag.deleteMode then
+        -- Delete mode active: pick up item and delete instead of equip/use
+        PickupContainerItem(bag, slot)
+        if CursorHasItem() then
+            -- Blizzard's DeleteCursorItem() handles quality thresholds:
+            --   Poor/Common  → deleted immediately, no popup
+            --   Uncommon+    → shows DELETE_GOOD_ITEM popup
+            -- When autoAccept is ON the OnUpdate above auto-confirms it.
+            DeleteCursorItem()
+        end
+        return -- Skip original equip/use behavior
+    end
+
+    -- Normal mode: call original function
+    original_UseContainerItem(bag, slot)
+end
+
+-- Legacy hook no longer needed - UseContainerItem override handles everything
 local function OnItemButtonClick(self, button)
     if not FreeMyBag.deleteMode then return end
     if button ~= "RightButton" then return end
-
-    -- RightButton doesn't put the item on the cursor (it equips/uses),
-    -- so we pick it up manually then delete it.
-    local parent   = self:GetParent()
-    local frameNum = tonumber(parent:GetName():match("%d+"))
-    if not frameNum then return end
-
-    PickupContainerItem(frameNum - 1, self:GetID())
-    if CursorHasItem() then
-        -- Blizzard's DeleteCursorItem() handles quality thresholds:
-        --   Poor/Common  → deleted immediately, no popup
-        --   Uncommon+    → shows DELETE_GOOD_ITEM popup
-        -- When autoAccept is ON the OnUpdate above auto-confirms it.
-        DeleteCursorItem()
-    end
+    -- Logic moved to UseContainerItem override above
 end
 
 -- ============================================================
@@ -116,7 +128,7 @@ function addon:PLAYER_LOGIN()
         if self.db[k] == nil then self.db[k] = v end
     end
 
-    hooksecurefunc("ContainerFrameItemButton_OnClick", OnItemButtonClick)
+    -- UseContainerItem is now overridden at the top of the file
 
     FreeMyBagUI:Create()
 
