@@ -1,0 +1,90 @@
+name: Build and Release FreeMyBag
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare addon directory
+        run: |
+          mkdir -p "build/FreeMyBag"
+
+          TOC_FILE="FreeMyBag.toc"
+
+          cp "$TOC_FILE" "build/FreeMyBag/FreeMyBag.toc"
+
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" =~ ^#.*$ || -z "$line" ]] && continue
+            [[ "$line" =~ ^##.*$ ]] && continue
+
+            line_normalized="${line//\\//}"
+
+            if [ -f "$line_normalized" ]; then
+              dir=$(dirname "$line_normalized")
+              mkdir -p "build/FreeMyBag/$dir"
+              cp "$line_normalized" "build/FreeMyBag/$line_normalized"
+              echo "Copied: $line_normalized"
+            else
+              echo "Warning: File not found: $line_normalized (original: $line)"
+            fi
+          done < "$TOC_FILE"
+
+          echo "Contents of build directory:"
+          find "build/FreeMyBag" -type f | sort
+
+      - name: Create ZIP
+        run: |
+          cd build
+          zip -r "FreeMyBag.zip" "FreeMyBag"
+          mv "FreeMyBag.zip" ..
+          cd ..
+
+          echo "=== ZIP contents ==="
+          unzip -l "FreeMyBag.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FreeMyBag
+          path: FreeMyBag.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List downloaded files
+        run: |
+          echo "=== Files in artifacts directory ==="
+          find artifacts -type f -name "*.zip"
+          echo "=== Directory structure ==="
+          ls -la artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

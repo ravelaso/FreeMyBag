@@ -1,25 +1,29 @@
 # FreeMyBag
 
-**Delete items from your bags with one click.**
+**Delete items from your bags with one right-click.**
 
 You're out farming. Your bags are filling up with gray junk. You can't sell because there's no vendor nearby — or you just don't want to waste time running back.
 
-Turn on **Delete Mode**, click each junk item once, and it's gone. Turn it off and keep playing.
+Turn on **Delete Mode**, right-click each junk item once, and it's gone. Turn it off and keep playing.
 
 ## How it works
 
-Toggle Delete Mode on (via the red button in your backpack or the slash command). Each time you click an item in your bags while Delete Mode is active, it gets destroyed immediately. When you're done, toggle it off and go back to normal gameplay.
+Toggle Delete Mode on (via the red button in your backpack or the slash command). While Delete Mode is active, **right-clicking** any item in your bags destroys it immediately. Left-click still works normally (pick up, move, equip, split stacks). When you're done, toggle it off and go back to normal gameplay.
 
-No dialogs, no right-click menus, no confirmation spam. One click, gone.
+No dialogs, no confirmation spam. One right-click, gone.
 
 ## Features
 
-- **Delete Mode** — click any bag item to destroy it instantly
+- **Delete Mode** — right-click any bag item to destroy it instantly (left-click works normally)
 - **Auto-Accept** — automatically confirms the Blizzard deletion popup so you never have to click a second time (optional, ON by default)
 - **Screen Border Pulse** — a pulsing red border around your screen while Delete Mode is active, so you always know the mode is on
 - **Bag Borders** — red outline on every bag frame (backpack, bags, bank) while Delete Mode is active
 - **Button Pulse** — the Delete Mode button pulses while active for extra visibility
 - All visual feedback can be toggled on/off individually in settings
+
+## Why right-click?
+
+Blizzard's default bag UI only passes **LeftButton** and **RightButton** events through. Modifier keys (ALT, CTRL, SHIFT) are consumed by the game engine before they reach any addon hook, and MiddleButton is not passed to bag item click handlers. Right-click is the only reliable way to trigger deletion that doesn't interfere with normal bag operations (pick up, move, split stacks).
 
 ## Commands
 

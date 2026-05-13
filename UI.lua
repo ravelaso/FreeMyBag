@@ -141,7 +141,7 @@ function FreeMyBagUI:CreateDeleteButton()
         deleteBtnBg:SetVertexColor(s.hover[1], s.hover[2], s.hover[3], 0.85)
         GameTooltip:SetOwner(deleteBtn, "ANCHOR_LEFT")
         if FreeMyBag.deleteMode then
-            GameTooltip:SetText("|cffff4444Delete Mode ACTIVE|r\nClick items to destroy them.\nClick again to disable.", nil, nil, nil, nil, true)
+            GameTooltip:SetText("|cffff4444Delete Mode ACTIVE|r\nRight-click items to destroy them.\nClick again to disable.", nil, nil, nil, nil, true)
         else
             GameTooltip:SetText("|cffccccccDelete Mode|r\nActivate to destroy items\nby clicking them.", nil, nil, nil, nil, true)
         end
@@ -164,7 +164,6 @@ function FreeMyBagUI:RefreshDeleteButton()
     if FreeMyBag.deleteMode then
         deleteBtnIcon:SetTexture(ICON_ON)
         deleteBtnBg:SetVertexColor(BTN_ON.bg[1], BTN_ON.bg[2], BTN_ON.bg[3], 0.85)
-        -- Start pulse if enabled
         if FreeMyBag.db.pulseEnabled then
             pulseTime = 0
             deleteBtn:SetScript("OnUpdate", UpdateButtonPulse)
@@ -173,6 +172,17 @@ function FreeMyBagUI:RefreshDeleteButton()
         deleteBtnIcon:SetTexture(ICON_OFF)
         deleteBtnBg:SetVertexColor(BTN_OFF.bg[1], BTN_OFF.bg[2], BTN_OFF.bg[3], 0.85)
         deleteBtn:SetScript("OnUpdate", nil)
+    end
+
+    -- Refresh tooltip if cursor is still over the button
+    if deleteBtn:IsMouseOver() then
+        GameTooltip:SetOwner(deleteBtn, "ANCHOR_LEFT")
+        if FreeMyBag.deleteMode then
+            GameTooltip:SetText("|cffff4444Delete Mode ACTIVE|r\nRight-click items to destroy them.\nClick again to disable.", nil, nil, nil, nil, true)
+        else
+            GameTooltip:SetText("|cffccccccDelete Mode|r\nActivate to destroy items\nby right-clicking them.", nil, nil, nil, nil, true)
+        end
+        GameTooltip:Show()
     end
 end
 
