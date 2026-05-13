@@ -60,20 +60,26 @@ end)
 
 -- ============================================================
 -- ---- Delete Mode hook ----
--- Registered once at PLAYER_LOGIN via hooksecurefunc so it
--- survives UI reloads and never breaks the original function.
 -- ============================================================
 
 local function OnItemButtonClick(self, button)
     if not FreeMyBag.deleteMode then return end
-    if button ~= "LeftButton" then return end
-    if not CursorHasItem() then return end
+    if button ~= "RightButton" then return end
 
-    -- Blizzard's DeleteCursorItem() handles quality thresholds:
-    --   Poor/Common  → deleted immediately, no popup
-    --   Uncommon+    → shows DELETE_GOOD_ITEM popup
-    -- When autoAccept is ON the OnUpdate above auto-confirms it.
-    DeleteCursorItem()
+    -- RightButton doesn't put the item on the cursor (it equips/uses),
+    -- so we pick it up manually then delete it.
+    local parent   = self:GetParent()
+    local frameNum = tonumber(parent:GetName():match("%d+"))
+    if not frameNum then return end
+
+    PickupContainerItem(frameNum - 1, self:GetID())
+    if CursorHasItem() then
+        -- Blizzard's DeleteCursorItem() handles quality thresholds:
+        --   Poor/Common  → deleted immediately, no popup
+        --   Uncommon+    → shows DELETE_GOOD_ITEM popup
+        -- When autoAccept is ON the OnUpdate above auto-confirms it.
+        DeleteCursorItem()
+    end
 end
 
 -- ============================================================
