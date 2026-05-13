@@ -21,10 +21,6 @@ No dialogs, no confirmation spam. One right-click, gone.
 - **Button Pulse** — the Delete Mode button pulses while active for extra visibility
 - All visual feedback can be toggled on/off individually in settings
 
-## Why right-click?
-
-Blizzard's default bag UI only passes **LeftButton** and **RightButton** events through. Modifier keys (ALT, CTRL, SHIFT) are consumed by the game engine before they reach any addon hook, and MiddleButton is not passed to bag item click handlers. Right-click is the only reliable way to trigger deletion that doesn't interfere with normal bag operations (pick up, move, split stacks).
-
 ## Commands
 
 | Command | Description |
@@ -53,7 +49,7 @@ It's also useful for:
 
 ## Requirements
 
-World of Warcraft Wrath of the Lich King 3.3.5 (or any client using the 3.3.5 API).
+World of Warcraft Wrath of the Lich King 3.3.5 
 
 ## License
 
