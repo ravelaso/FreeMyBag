@@ -377,6 +377,15 @@ function FreeMyBagUI:CreateConfigWindow()
     title:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 8, -5)
     title:SetText("|cffcc3333Free|r|cffccccccMyBag|r  —  Settings")
 
+    -- Version label (top-right)
+    local version = GetAddOnMetadata("FreeMyBag", "Version") or ""
+    if version ~= "" then
+        local verLbl = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        verLbl:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -24, -5)
+        verLbl:SetText("v" .. version)
+        verLbl:SetTextColor(0.40, 0.40, 0.40)
+    end
+
     -- Close button
     local closeBtn = CreateFrame("Button", nil, configFrame)
     closeBtn:SetSize(16, 16)
@@ -424,11 +433,12 @@ function FreeMyBagUI:CreateConfigWindow()
     local adDesc = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     adDesc:SetPoint("TOPLEFT",  configFrame, "TOPLEFT",  PAD,  y)
     adDesc:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -PAD, y)
+    adDesc:SetWidth(W - PAD * 2)
     adDesc:SetWordWrap(true)
     adDesc:SetNonSpaceWrap(true)
-    adDesc:SetText("Auto-confirms ALL delete popups (both typing DELETE for Uncommon+ and yes/no for Poor/Common). OFF by default.")
+    adDesc:SetText("Auto-confirms Rare+ popups (the ones that require typing DELETE).")
     adDesc:SetTextColor(0.50, 0.50, 0.50)
-    y = y - 26
+    y = y - 22
 
     local adToggle = MakeToggle(
         configFrame, false,
@@ -586,7 +596,7 @@ function FreeMyBagUI:ShowDeleteConfirm(bag, slot, itemName)
         -- Delete button
         local delBtn = CreateFrame("Button", nil, f)
         delBtn:SetSize(85, 22)
-        delBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", -50, 8)
+        delBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 15, 8)
         local delBg = ColorTex(delBtn, "BACKGROUND", 0.55, 0.08, 0.08, 0.85)
         delBg:SetAllPoints(delBtn)
         local delLbl = delBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -596,9 +606,13 @@ function FreeMyBagUI:ShowDeleteConfirm(bag, slot, itemName)
         delBtn:SetScript("OnEnter", function() delBg:SetVertexColor(0.75, 0.12, 0.12, 0.9) end)
         delBtn:SetScript("OnLeave", function() delBg:SetVertexColor(0.55, 0.08, 0.08, 0.85) end)
         delBtn:SetScript("OnClick", function()
-            PickupContainerItem(f._bag, f._slot)
             if CursorHasItem() then
                 DeleteCursorItem()
+            else
+                PickupContainerItem(f._bag, f._slot)
+                if CursorHasItem() then
+                    DeleteCursorItem()
+                end
             end
             f:Hide()
         end)
@@ -607,7 +621,7 @@ function FreeMyBagUI:ShowDeleteConfirm(bag, slot, itemName)
         -- Cancel button
         local canBtn = CreateFrame("Button", nil, f)
         canBtn:SetSize(85, 22)
-        canBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOM", 50, 8)
+        canBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -15, 8)
         local canBg = ColorTex(canBtn, "BACKGROUND", 0.15, 0.15, 0.15, 0.85)
         canBg:SetAllPoints(canBtn)
         local canLbl = canBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -616,7 +630,12 @@ function FreeMyBagUI:ShowDeleteConfirm(bag, slot, itemName)
         canLbl:SetTextColor(0.70, 0.70, 0.70)
         canBtn:SetScript("OnEnter", function() canBg:SetVertexColor(0.25, 0.25, 0.25, 0.9) end)
         canBtn:SetScript("OnLeave", function() canBg:SetVertexColor(0.15, 0.15, 0.15, 0.85) end)
-        canBtn:SetScript("OnClick", function() f:Hide() end)
+        canBtn:SetScript("OnClick", function()
+            if CursorHasItem() then
+                PickupContainerItem(f._bag, f._slot)
+            end
+            f:Hide()
+        end)
         ApplyBorder(canBtn, 0.20, 0.20, 0.20, 0.5)
 
         deleteConfirmFrame = f

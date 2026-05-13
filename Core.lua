@@ -35,7 +35,13 @@ local altDown = false
 local pendingAction = false
 
 autoFrame:SetScript("OnUpdate", function()
-    altDown = IsAltKeyDown()
+    -- Only check Alt when bags are open (no need when user can't click items)
+    local bagsOpen = ContainerFrame1:IsShown() or ContainerFrame2:IsShown()
+        or ContainerFrame3:IsShown() or ContainerFrame4:IsShown()
+        or ContainerFrame5:IsShown()
+    if bagsOpen then
+        altDown = IsAltKeyDown()
+    end
 
     -- Pending action from the confirm case (Rare+ with autoDelete OFF)
     -- Item was picked up by Blizzard's OnClick; put back and show dialog.
