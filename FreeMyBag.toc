@@ -1,0 +1,14 @@
+## Interface: 30300
+## Title: FreeMyBag
+## Notes: Delete bag items with a single click using Delete Mode.
+## Author: Ravelo
+## Version: 1.0.0
+## SavedVariables: FreeMyBag_SavedVars
+
+## Load order:
+##   1. UI   — delete button anchored to backpack + config window
+##   2. Core — LAST: creates FreeMyBag global, registers events and hooks.
+##             No module references FreeMyBag at file load time.
+
+UI.lua
+Core.lua
