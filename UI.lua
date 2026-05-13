@@ -12,6 +12,11 @@ FreeMyBagUI = {}
 
 local WHITE_TEX = "Interface\\Buttons\\WHITE8X8"
 
+-- Border colors for mode visual feedback
+-- Change these to customize the look
+local COLOR_DELETE_MODE     = { 0.90, 0.10, 0.10 }  -- red
+local COLOR_ADDEX_MODE      = { 0.00, 0.75, 0.00 }  -- green
+
 local function ColorTex(parent, layer, r, g, b, a)
     local tex = parent:CreateTexture(nil, layer)
     tex:SetTexture(WHITE_TEX)
@@ -100,21 +105,6 @@ local deleteBtn
 local deleteBtnBg
 local deleteBtnIcon
 
--- OnUpdate state for button pulse
-local pulseTime = 0
-
-local function UpdateButtonPulse(self, elapsed)
-    if not FreeMyBag.deleteMode or not FreeMyBag.db.pulseEnabled then
-        self:SetScript("OnUpdate", nil)
-        deleteBtnBg:SetVertexColor(BTN_ON.bg[1], BTN_ON.bg[2], BTN_ON.bg[3], 0.85)
-        return
-    end
-    pulseTime = pulseTime + elapsed
-    -- Sine wave between 0.5 and 1.0 alpha, period ~1.4s
-    local a = 0.75 + 0.25 * math.sin(pulseTime * 4.5)
-    deleteBtnBg:SetVertexColor(BTN_ON.bg[1], BTN_ON.bg[2], BTN_ON.bg[3], a)
-end
-
 function FreeMyBagUI:CreateDeleteButton()
     if deleteBtn then return end
 
@@ -164,10 +154,6 @@ function FreeMyBagUI:RefreshDeleteButton()
     if FreeMyBag.deleteMode then
         deleteBtnIcon:SetTexture(ICON_ON)
         deleteBtnBg:SetVertexColor(BTN_ON.bg[1], BTN_ON.bg[2], BTN_ON.bg[3], 0.85)
-        if FreeMyBag.db.pulseEnabled then
-            pulseTime = 0
-            deleteBtn:SetScript("OnUpdate", UpdateButtonPulse)
-        end
     else
         deleteBtnIcon:SetTexture(ICON_OFF)
         deleteBtnBg:SetVertexColor(BTN_OFF.bg[1], BTN_OFF.bg[2], BTN_OFF.bg[3], 0.85)
@@ -194,9 +180,18 @@ end
 local screenBorder = {}      -- holds the 4 edge textures
 local screenBorderFrame      -- parent frame
 local screenPulseTime = 0
+local screenBorderR, screenBorderG, screenBorderB = 1, 0, 0  -- current color
+
+-- Helper: get border color for the currently active mode
+local function GetModeBorderColor()
+    if FreeMyBag.addExclusionMode then
+        return COLOR_ADDEX_MODE[1], COLOR_ADDEX_MODE[2], COLOR_ADDEX_MODE[3]
+    end
+    return COLOR_DELETE_MODE[1], COLOR_DELETE_MODE[2], COLOR_DELETE_MODE[3]
+end
 
 local function UpdateScreenBorderPulse(self, elapsed)
-    if not FreeMyBag.deleteMode or not FreeMyBag.db.screenBorderEnabled then
+    if not (FreeMyBag.deleteMode or FreeMyBag.addExclusionMode) or not FreeMyBag.db.screenBorderEnabled then
         self:SetScript("OnUpdate", nil)
         self:Hide()
         return
@@ -204,7 +199,7 @@ local function UpdateScreenBorderPulse(self, elapsed)
     screenPulseTime = screenPulseTime + elapsed
     local a = 0.35 + 0.35 * math.sin(screenPulseTime * 3.0)
     for _, t in ipairs(screenBorder) do
-        t:SetVertexColor(1, 0, 0, a)
+        t:SetVertexColor(screenBorderR, screenBorderG, screenBorderB, a)
     end
 end
 
@@ -254,8 +249,12 @@ end
 
 function FreeMyBagUI:SetScreenBorderActive(on)
     CreateScreenBorderFrame()
+    screenBorderR, screenBorderG, screenBorderB = GetModeBorderColor()
     if on and FreeMyBag.db.screenBorderEnabled then
         screenPulseTime = 0
+        for _, t in ipairs(screenBorder) do
+            t:SetVertexColor(screenBorderR, screenBorderG, screenBorderB, 0.35)
+        end
         screenBorderFrame:Show()
         screenBorderFrame:SetScript("OnUpdate", UpdateScreenBorderPulse)
     else
@@ -278,14 +277,16 @@ function FreeMyBagUI:CreateBagBorderForFrame(containerFrame)
     border:SetAllPoints(containerFrame)
     border:SetFrameLevel(containerFrame:GetFrameLevel() + 3)
     border:Hide()
+    border._edges = {}
 
     local function edge(pt1, pt2, isH)
         local t = border:CreateTexture(nil, "OVERLAY")
         t:SetTexture(WHITE_TEX)
-        t:SetVertexColor(0.9, 0.10, 0.10, 0.85)
+        t:SetVertexColor(COLOR_DELETE_MODE[1], COLOR_DELETE_MODE[2], COLOR_DELETE_MODE[3], 0.85)
         t:SetPoint(pt1, border, pt1, 0, 0)
         t:SetPoint(pt2, border, pt2, 0, 0)
         if isH then t:SetHeight(BAG_BORDER_THICKNESS) else t:SetWidth(BAG_BORDER_THICKNESS) end
+        table.insert(border._edges, t)
     end
     edge("TOPLEFT",    "TOPRIGHT",    true)
     edge("BOTTOMLEFT", "BOTTOMRIGHT", true)
@@ -296,12 +297,16 @@ function FreeMyBagUI:CreateBagBorderForFrame(containerFrame)
 end
 
 function FreeMyBagUI:SetBagBorderActive(on)
+    local r, g, b = GetModeBorderColor()
     for i = 1, 7 do
         local frame = _G["ContainerFrame" .. i]
         if frame then
             FreeMyBagUI:CreateBagBorderForFrame(frame)
             local border = bagBorderFrames[frame]
             if on and FreeMyBag.db.bagBorderEnabled then
+                for _, tex in ipairs(border._edges or {}) do
+                    tex:SetVertexColor(r, g, b, 0.85)
+                end
                 border:Show()
             else
                 border:Hide()
@@ -342,49 +347,12 @@ function FreeMyBagUI:RefreshDeleteModeToggle()
 end
 
 -- ============================================================
--- ---- Exclusion Add Mode callbacks + green border ----
+-- ---- Exclusion Add Mode callbacks ----
 -- ============================================================
 
-local addModeBorderFrame
-local addModeBorderTextures = {}
-
-local function CreateAddModeBorderFrame()
-    if addModeBorderFrame then return end
-    addModeBorderFrame = CreateFrame("Frame", "FreeMyBagAddModeBorder", UIParent)
-    addModeBorderFrame:SetAllPoints(UIParent)
-    addModeBorderFrame:SetFrameStrata("FULLSCREEN")
-    addModeBorderFrame:SetFrameLevel(199)
-    addModeBorderFrame:Hide()
-
-    local THICKNESS = 6
-    local function edge(pt1, pt2, isH)
-        local t = addModeBorderFrame:CreateTexture(nil, "OVERLAY")
-        t:SetTexture(WHITE_TEX)
-        t:SetPoint(pt1, addModeBorderFrame, pt1, 0, 0)
-        t:SetPoint(pt2, addModeBorderFrame, pt2, 0, 0)
-        if isH then t:SetHeight(THICKNESS) else t:SetWidth(THICKNESS) end
-        table.insert(addModeBorderTextures, t)
-    end
-    edge("TOPLEFT",    "TOPRIGHT",    true)
-    edge("BOTTOMLEFT", "BOTTOMRIGHT", true)
-    edge("TOPLEFT",    "BOTTOMLEFT",  false)
-    edge("TOPRIGHT",   "BOTTOMRIGHT", false)
-end
-
-function FreeMyBagUI:SetAddModeBorderActive(on)
-    CreateAddModeBorderFrame()
-    if on then
-        for _, t in ipairs(addModeBorderTextures) do
-            t:SetVertexColor(0, 0.75, 0, 0.85)
-        end
-        addModeBorderFrame:Show()
-    else
-        addModeBorderFrame:Hide()
-    end
-end
-
 function FreeMyBagUI:OnExclusionAddModeActivated()
-    FreeMyBagUI:SetAddModeBorderActive(true)
+    FreeMyBagUI:SetScreenBorderActive(true)
+    FreeMyBagUI:SetBagBorderActive(true)
     if configFrame then
         if configFrame._exHint then
             configFrame._exHint:Show()
@@ -392,14 +360,21 @@ function FreeMyBagUI:OnExclusionAddModeActivated()
         if configFrame._exCancelBtn then
             configFrame._exCancelBtn:Show()
         end
+        if configFrame._exAddToggle then
+            configFrame._exAddToggle:SetState(true)
+        end
     end
 end
 
 function FreeMyBagUI:OnExclusionAddModeDeactivated()
-    FreeMyBagUI:SetAddModeBorderActive(false)
+    FreeMyBagUI:SetScreenBorderActive(false)
+    FreeMyBagUI:SetBagBorderActive(false)
     if configFrame then
         if configFrame._exHint then configFrame._exHint:Hide() end
         if configFrame._exCancelBtn then configFrame._exCancelBtn:Hide() end
+        if configFrame._exAddToggle then
+            configFrame._exAddToggle:SetState(false)
+        end
     end
     FreeMyBagUI:RefreshExclusionList()
 end
@@ -485,7 +460,10 @@ function FreeMyBagUI:CreateConfigWindow()
         "Delete Mode: |cffff4444ON|r",
         "Delete Mode: |cff888888OFF|r",
         INNER_L, 22, yLeft, colLeftX,
-        function() FreeMyBag:ToggleDeleteMode() end
+        function(btn)
+            FreeMyBag:ToggleDeleteMode()
+            btn:SetState(FreeMyBag.deleteMode)
+        end
     )
     configFrame.dmToggle = dmToggle
     yLeft = yLeft - 28
@@ -532,7 +510,7 @@ function FreeMyBagUI:CreateConfigWindow()
     vfLabel:SetTextColor(0.75, 0.75, 0.75)
     yLeft = yLeft - 26
 
-    -- Screen border toggle
+    -- Screen border toggle (affects both Delete Mode and Add Exclusion Mode)
     local sbToggle = MakeToggle(
         configFrame, true,
         "Screen Border: |cff40c040ON|r",
@@ -542,13 +520,13 @@ function FreeMyBagUI:CreateConfigWindow()
             FreeMyBag.db.screenBorderEnabled = not FreeMyBag.db.screenBorderEnabled
             FreeMyBag_SavedVars = FreeMyBag.db
             btn:SetState(FreeMyBag.db.screenBorderEnabled)
-            FreeMyBagUI:SetScreenBorderActive(FreeMyBag.deleteMode)
+            FreeMyBagUI:SetScreenBorderActive(FreeMyBag.deleteMode or FreeMyBag.addExclusionMode)
         end
     )
     configFrame.sbToggle = sbToggle
     yLeft = yLeft - 26
 
-    -- Bag border toggle
+    -- Bag border toggle (affects both Delete Mode and Add Exclusion Mode)
     local bbToggle = MakeToggle(
         configFrame, true,
         "Bag Border: |cff40c040ON|r",
@@ -558,27 +536,11 @@ function FreeMyBagUI:CreateConfigWindow()
             FreeMyBag.db.bagBorderEnabled = not FreeMyBag.db.bagBorderEnabled
             FreeMyBag_SavedVars = FreeMyBag.db
             btn:SetState(FreeMyBag.db.bagBorderEnabled)
-            FreeMyBagUI:SetBagBorderActive(FreeMyBag.deleteMode)
+            FreeMyBagUI:SetBagBorderActive(FreeMyBag.deleteMode or FreeMyBag.addExclusionMode)
         end
     )
     configFrame.bbToggle = bbToggle
     yLeft = yLeft - 26
-
-    -- Button pulse toggle
-    local bpToggle = MakeToggle(
-        configFrame, true,
-        "Button Pulse: |cff40c040ON|r",
-        "Button Pulse: |cff888888OFF|r",
-        INNER_L, 22, yLeft, colLeftX,
-        function(btn)
-            FreeMyBag.db.pulseEnabled = not FreeMyBag.db.pulseEnabled
-            FreeMyBag_SavedVars = FreeMyBag.db
-            btn:SetState(FreeMyBag.db.pulseEnabled)
-            FreeMyBagUI:RefreshDeleteButton()
-        end
-    )
-    configFrame.bpToggle = bpToggle
-    yLeft = yLeft - 10
 
     MakeSep(configFrame, yLeft, colLeftX) ; yLeft = yLeft - 20
 
@@ -592,31 +554,25 @@ function FreeMyBagUI:CreateConfigWindow()
     exLabel:SetTextColor(0.75, 0.75, 0.75)
     yRight = yRight - 24
 
-    -- Add Item button (use Frame, not Button — CreateTexture works on Frame in WotLK 3.3.5)
-    local addExBtn = CreateFrame("Button", nil, configFrame)
-    addExBtn:SetSize(80, 20)
-    addExBtn:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colRightX, yRight)
-    local addExBg = addExBtn:CreateTexture(nil, "BACKGROUND")
-    addExBg:SetAllPoints()
-    addExBg:SetVertexColor(0.10, 0.30, 0.10, 0.85)
-    local addExLbl = addExBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    addExLbl:SetPoint("CENTER", addExBtn, "CENTER", 0, 0)
-    addExLbl:SetText("Add Item")
-    addExLbl:SetTextColor(0.75, 0.85, 0.75)
-    addExBtn:SetScript("OnEnter", function() addExBg:SetVertexColor(0.15, 0.40, 0.15, 0.9) end)
-    addExBtn:SetScript("OnLeave", function() addExBg:SetVertexColor(0.10, 0.30, 0.10, 0.85) end)
-    addExBtn:SetScript("OnClick", function()
-        FreeMyBag:ToggleExclusionAddMode()
-    end)
-    ApplyBorder(addExBtn, 0.15, 0.45, 0.15, 0.5)
-    configFrame._exAddBtn = addExBtn
+    -- Add Items / Stop Adding toggle (uses MakeToggle — SetState changes label reliably)
+    local exToggle = MakeToggle(
+        configFrame, false,
+        "Stop Adding",
+        "Add Items",
+        90, 22, yRight, colRightX,
+        function(btn)
+            FreeMyBag:ToggleExclusionAddMode()
+            btn:SetState(FreeMyBag.addExclusionMode)
+        end
+    )
+    configFrame._exAddToggle = exToggle
     yRight = yRight - 24
 
     -- Hint text (visible only in add mode)
     local exHint = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     exHint:SetPoint("TOPLEFT", configFrame, "TOPLEFT", colRightX, yRight)
     exHint:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -PAD, yRight)
-    exHint:SetText("Click an item in your bags to protect it")
+    exHint:SetText("ALT+LeftClick an item in your bags to protect it")
     exHint:SetTextColor(0.50, 0.75, 0.50)
     exHint:Hide()
     configFrame._exHint = exHint
@@ -833,7 +789,9 @@ function FreeMyBagUI:OpenConfig()
     configFrame.adToggle:SetState(db.autoDelete)
     configFrame.sbToggle:SetState(db.screenBorderEnabled)
     configFrame.bbToggle:SetState(db.bagBorderEnabled)
-    configFrame.bpToggle:SetState(db.pulseEnabled)
+    if configFrame._exAddToggle then
+        configFrame._exAddToggle:SetState(FreeMyBag.addExclusionMode or false)
+    end
 
     FreeMyBagUI:RefreshExclusionList()
 

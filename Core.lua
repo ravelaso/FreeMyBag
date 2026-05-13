@@ -11,10 +11,10 @@ FreeMyBag = addon
 
 local DEFAULT_SAVED = {
     autoDelete          = false,
-    screenBorderEnabled = true,
+    screenBorderEnabled = false,
     bagBorderEnabled    = true,
-    pulseEnabled        = true,
-    exclusionList       = {},
+
+    exclusionList       = { [6948] = true },  -- Hearthstone protected by default
 }
 
 addon.db         = {}
@@ -127,6 +127,7 @@ local function OnContainerItemMouseDown(self, buttonName)
                 local typeID = GetItemTypeID(itemLink)
                 if typeID then
                     addon.db.exclusionList[typeID] = true
+                    FreeMyBagUI:RefreshExclusionList()
                 end
             end
         end
