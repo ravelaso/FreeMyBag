@@ -1,8 +1,6 @@
 -- FreeMyBag Core
--- Addon lifecycle, delete mode logic, and auto-accept popup handling.
+-- Addon lifecycle, delete mode logic, and auto-delete popup handling.
 -- Loads LAST so FreeMyBagUI is already defined when events fire.
--- The FreeMyBag global is set here; UI.lua references it only inside
--- functions (never at file load time) to avoid nil issues.
 
 local addon = CreateFrame("Frame", "FreeMyBagCore", UIParent)
 FreeMyBag = addon
@@ -12,26 +10,45 @@ FreeMyBag = addon
 -- ============================================================
 
 local DEFAULT_SAVED = {
-    autoAccept          = false,  -- auto-confirm the Blizzard delete confirmation popup
-    screenBorderEnabled = true,   -- pulsing red border around the screen while delete mode is on
-    bagBorderEnabled    = true,   -- red outline on ContainerFrame1 while delete mode is on
-    pulseEnabled        = true,   -- button alpha pulse while delete mode is on
+    autoDelete          = false,
+    screenBorderEnabled = true,
+    bagBorderEnabled    = true,
+    pulseEnabled        = true,
 }
 
 addon.db         = {}
-addon.deleteMode = false  -- runtime only, never persisted
+addon.deleteMode = false
 
 -- ============================================================
--- ---- Auto-accept: auto-confirm delete popups ----
--- In delete mode Blizzard's DeleteCursorItem() shows its own
--- confirmation popup for quality items (Uncommon+). When
--- autoAccept is ON we dismiss those popups automatically.
+-- ---- Alt key tracking + pending actions ----
 -- ============================================================
+-- IsAltKeyDown() returns nil from hooksecurefunc and HookScript
+-- (both run in a restored secure context). But it DOES work
+-- from OnUpdate — so we track the Alt state every frame in
+-- `altDown` for the OnMouseDown hook to read.
+--
+-- OnMouseDown fires for EVERY mouse button press, including
+-- Alt+LeftClick which never reaches Blizzard's OnClick handler.
 
 local autoFrame = CreateFrame("Frame")
+local altDown = false
+local pendingAction = false
 
 autoFrame:SetScript("OnUpdate", function()
-    if not (FreeMyBag.deleteMode and FreeMyBag.db.autoAccept) then return end
+    altDown = IsAltKeyDown()
+
+    -- Pending action from the confirm case (Rare+ with autoDelete OFF)
+    -- Item was picked up by Blizzard's OnClick; put back and show dialog.
+    if pendingAction then
+        local pa = pendingAction
+        pendingAction = false
+        PickupContainerItem(pa.bag, pa.slot)
+        FreeMyBagUI:ShowDeleteConfirm(pa.bag, pa.slot, pa.name)
+        return
+    end
+
+    -- Auto-confirm Blizzard popups (autoDelete = ON)
+    if not (FreeMyBag.deleteMode and FreeMyBag.db.autoDelete) then return end
 
     for i = 1, STATICPOPUP_NUMDIALOGS do
         local dialog = _G["StaticPopup" .. i]
@@ -59,39 +76,67 @@ autoFrame:SetScript("OnUpdate", function()
 end)
 
 -- ============================================================
--- ---- Delete Mode hook ----
+-- ---- OnMouseDown hook (Alt+LeftClick in delete mode) ----
 -- ============================================================
+-- OnMouseDown fires BEFORE the secure system processes the click,
+-- so it catches ALL button presses including Alt+LeftClick (which
+-- never reaches ContainerFrameItemButton_OnClick).
+--
+-- We read `altDown` (tracked by OnUpdate) since IsAltKeyDown()
+-- would return nil from inside the hook itself.
+--
+-- Delete case:   pickup → DeleteCursorItem()
+-- Confirm case:  pickup → put back → pendingAction → OnUpdate shows dialog
+-- Blizzard OnClick after us: slot is empty (delete) → no-op;
+--                            slot has item (confirm) → picks up again → OnUpdate puts back
 
--- Store original function before hooking
-local original_UseContainerItem = UseContainerItem
+local function OnContainerItemMouseDown(self, buttonName)
+    if not FreeMyBag.deleteMode then return end
+    if buttonName ~= "LeftButton" then return end
+    if not altDown then return end
 
--- Override UseContainerItem to intercept RightClick equip/use behavior.
--- When in delete mode, we delete instead of equip.
--- This solves "Another action in progress" because we intercept BEFORE
--- Blizzard tries to equip, not after like ContainerFrameItemButton_OnClick hook.
-UseContainerItem = function(bag, slot)
-    if FreeMyBag.deleteMode then
-        -- Delete mode active: pick up item and delete instead of equip/use
+    local parent   = self:GetParent()
+    local frameNum = tonumber(parent:GetName():match("%d+"))
+    if not frameNum then return end
+    local bag  = frameNum - 1
+    local slot = self:GetID()
+
+    local itemLink = GetContainerItemLink(bag, slot)
+    if not itemLink then return end
+    local _, _, quality = GetItemInfo(itemLink)
+    local name = GetItemInfo(itemLink)
+
+    -- Pick up the item (Blizzard's OnClick fires after us)
+    PickupContainerItem(bag, slot)
+    if not CursorHasItem() then return end
+
+    if not FreeMyBag.db.autoDelete and quality and quality >= 3 then
+        -- Rare+ with autoDelete OFF: put it back, schedule confirm
         PickupContainerItem(bag, slot)
-        if CursorHasItem() then
-            -- Blizzard's DeleteCursorItem() handles quality thresholds:
-            --   Poor/Common  → deleted immediately, no popup
-            --   Uncommon+    → shows DELETE_GOOD_ITEM popup
-            -- When autoAccept is ON the OnUpdate above auto-confirms it.
-            DeleteCursorItem()
-        end
-        return -- Skip original equip/use behavior
+        pendingAction = { type = "confirm", bag = bag, slot = slot, name = name or "Unknown" }
+    else
+        -- autoDelete = ON or Poor/Common/Uncommon: destroy immediately
+        DeleteCursorItem()
     end
-
-    -- Normal mode: call original function
-    original_UseContainerItem(bag, slot)
 end
 
--- Legacy hook no longer needed - UseContainerItem override handles everything
-local function OnItemButtonClick(self, button)
-    if not FreeMyBag.deleteMode then return end
-    if button ~= "RightButton" then return end
-    -- Logic moved to UseContainerItem override above
+-- ============================================================
+-- ---- Hook all container buttons ----
+-- ============================================================
+
+local function HookContainerButtons()
+    for i = 1, 10 do
+        local frame = _G["ContainerFrame" .. i]
+        if frame then
+            for j = 1, 32 do
+                local button = _G["ContainerFrame" .. i .. "Item" .. j]
+                if button and not button.fmbHooked then
+                    button:HookScript("OnMouseDown", OnContainerItemMouseDown)
+                    button.fmbHooked = true
+                end
+            end
+        end
+    end
 end
 
 -- ============================================================
@@ -128,8 +173,7 @@ function addon:PLAYER_LOGIN()
         if self.db[k] == nil then self.db[k] = v end
     end
 
-    -- UseContainerItem is now overridden at the top of the file
-
+    HookContainerButtons()
     FreeMyBagUI:Create()
 
     addon:Print("Loaded. Type |cffffd200/fmb|r to open settings.")
